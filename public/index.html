@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador de Preços NFe</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Comparador de Preços NFe</h1>
+            <p>Compare preços entre XML da NFe e planilha Excel</p>
+        </header>
+
+        <section class="upload-section">
+            <div class="upload-group">
+                <label class="upload-label">
+                    <input type="file" id="xmlFile" accept=".xml" hidden>
+                    <div class="upload-area">
+                        <div class="upload-icon">📄</div>
+                        <span>Upload XML (.xml)</span>
+                        <div class="file-name" id="xmlFileName"></div>
+                    </div>
+                </label>
+
+                <label class="upload-label">
+                    <input type="file" id="xlsxFile" accept=".xlsx,.xls" hidden>
+                    <div class="upload-area">
+                        <div class="upload-icon">📊</div>
+                        <span>Upload Excel (.xlsx)</span>
+                        <div class="file-name" id="xlsxFileName"></div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="button-group">
+                <button id="compareBtn" class="btn btn-primary" disabled>
+                    🔄 Comparar
+                </button>
+                <button id="exportBtn" class="btn btn-secondary" disabled>
+                    📥 Exportar CSV
+                </button>
+            </div>
+        </section>
+
+        <section class="controls-section">
+            <div class="filters">
+                <h3>Filtros por Status</h3>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="ALL">Todos</button>
+                    <button class="filter-btn status-ok" data-filter="OK">OK</button>
+                    <button class="filter-btn status-abaixo" data-filter="ABAIXO_MINIMO">Abaixo Mínimo</button>
+                    <button class="filter-btn status-sem" data-filter="SEM_PRECO">Sem Preço</button>
+                    <button class="filter-btn status-erro" data-filter="ERRO_PARSING">Erro Parsing</button>
+                </div>
+            </div>
+
+            <div class="filters">
+                <h3>Filtros por Match Type</h3>
+                <div class="filter-group">
+                    <button class="filter-btn-match active" data-filter="ALL">Todos</button>
+                    <button class="filter-btn-match" data-filter="EAN-Com">EAN-Com</button>
+                    <button class="filter-btn-match" data-filter="EAN-Trib">EAN-Trib</button>
+                    <button class="filter-btn-match" data-filter="CODIGO">Código</button>
+                    <button class="filter-btn-match" data-filter="FUZZY">Fuzzy</button>
+                    <button class="filter-btn-match" data-filter="NULL">NULL</button>
+                </div>
+            </div>
+
+            <div class="search-section">
+                <input type="text" id="searchInput" placeholder="🔍 Buscar por código ou descrição..." />
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <div class="stats-group">
+                <h3>📊 Contadores por Status</h3>
+                <div class="stats-cards">
+                    <div class="stat-card status-ok">
+                        <div class="stat-number" id="countOK">0</div>
+                        <div class="stat-label">OK</div>
+                    </div>
+                    <div class="stat-card status-abaixo">
+                        <div class="stat-number" id="countABAIXO_MINIMO">0</div>
+                        <div class="stat-label">Abaixo Mínimo</div>
+                    </div>
+                    <div class="stat-card status-sem">
+                        <div class="stat-number" id="countSEM_PRECO">0</div>
+                        <div class="stat-label">Sem Preço</div>
+                    </div>
+                    <div class="stat-card status-erro">
+                        <div class="stat-number" id="countERRO_PARSING">0</div>
+                        <div class="stat-label">Erro Parsing</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-group">
+                <h3>🎯 Contadores por Match Type</h3>
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-number" id="countEAN-Com">0</div>
+                        <div class="stat-label">EAN-Com</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="countEAN-Trib">0</div>
+                        <div class="stat-label">EAN-Trib</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="countCODIGO">0</div>
+                        <div class="stat-label">Código</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="countFUZZY">0</div>
+                        <div class="stat-label">Fuzzy</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="countNULL">0</div>
+                        <div class="stat-label">NULL</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <div class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>EAN XML</th>
+                            <th>EAN XML (Trib)</th>
+                            <th>EAN Excel</th>
+                            <th>Descrição</th>
+                            <th>Qtd XML</th>
+                            <th>Unid</th>
+                            <th>Preço XML (unit)</th>
+                            <th>Preço Tabela</th>
+                            <th>Mínimo (1.5×)</th>
+                            <th>Status</th>
+                            <th>Match Type</th>
+                            <th>Observações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processando arquivos...</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

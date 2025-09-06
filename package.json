@@ -1,0 +1,24 @@
+{
+  "name": "nfe-comparador",
+  "version": "1.0.0",
+  "description": "Sistema de comparação de preços entre XML NFe e planilhas Excel",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "fast-xml-parser": "^4.3.2",
+    "xlsx": "^0.18.5",
+    "cors": "^2.8.5",
+    "string-similarity": "^4.0.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["nfe", "xml", "excel", "comparador", "precos"],
+  "author": "",
+  "license": "MIT"
+}
