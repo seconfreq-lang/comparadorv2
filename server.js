@@ -98,34 +98,58 @@ const detectPack = (xProd) => {
     return packMatch ? parseInt(packMatch[1]) : null;
 };
 
+// Detectar multiplicador em unidades (CX27, FD10, etc.)
+const detectMultiplierInUnit = (unit) => {
+    if (!unit) return { multiplier: 1, cleanUnit: unit };
+    
+    // Padrão: CX27, FD10, etc.
+    const match = unit.match(/^([A-Z]+)(\d+)$/);
+    if (match) {
+        const cleanUnit = match[1];
+        const multiplier = parseInt(match[2]);
+        return { multiplier, cleanUnit };
+    }
+    
+    return { multiplier: 1, cleanUnit: unit };
+};
+
 // Calcular unidades internas
 const unidadesInternasDe = (item) => {
-    const { uTrib, qTrib, xProd } = item;
+    const { uTrib, qTrib, uCom, qCom, xProd } = item;
     
-    // Se uTrib é unidade direta (latas, garrafas, peças)
-    if (['LAT', 'GR', 'PEC', 'UN', 'UN1', 'PC1'].includes(uTrib)) {
+    // Verificar multiplicadores em uTrib e uCom
+    const uTribInfo = detectMultiplierInUnit(uTrib);
+    const uComInfo = detectMultiplierInUnit(uCom);
+    
+    // Usar uTrib preferencialmente, senão uCom
+    const unitInfo = uTribInfo.multiplier > 1 ? uTribInfo : uComInfo;
+    const quantity = uTribInfo.multiplier > 1 ? qTrib : qCom;
+    const adjustedQuantity = quantity * unitInfo.multiplier;
+    
+    // Se a unidade limpa é unidade direta (latas, garrafas, peças)
+    if (['LAT', 'GR', 'PEC', 'UN', 'UN1', 'PC1'].includes(unitInfo.cleanUnit)) {
         return {
-            unidades: qTrib,
-            tipo: 'unidade_direta',
-            observacao: `${qTrib} ${uTrib}`
+            unidades: adjustedQuantity,
+            tipo: 'unidade_direta_com_multiplicador',
+            observacao: `${adjustedQuantity} unidades (${quantity} ${unitInfo.multiplier > 1 ? uTrib || uCom : unitInfo.cleanUnit}${unitInfo.multiplier > 1 ? ' = ' + quantity + ' × ' + unitInfo.multiplier : ''})`
         };
     }
     
-    // Se uTrib é massa/volume, deduzir pela gramagem/volume do produto
-    if (['KG', 'G', 'L', 'ML'].includes(uTrib)) {
+    // Se a unidade limpa é massa/volume, deduzir pela gramagem/volume do produto
+    if (['KG', 'G', 'L', 'ML'].includes(unitInfo.cleanUnit)) {
         const tamanhoInfo = parseTamanhoUnidade(xProd);
         const pack = detectPack(xProd);
         
         if (tamanhoInfo.litrosOuKgPorUnidade) {
-            // Converter qTrib para unidade padronizada se necessário
-            let qTribPadronizada = qTrib;
-            if (uTrib === 'G' && tamanhoInfo.unidadePadronizada === 'KG') {
-                qTribPadronizada = qTrib / 1000;
-            } else if (uTrib === 'ML' && tamanhoInfo.unidadePadronizada === 'L') {
-                qTribPadronizada = qTrib / 1000;
+            // Converter quantidade ajustada para unidade padronizada se necessário
+            let quantidadeAjustadaPadronizada = adjustedQuantity;
+            if (unitInfo.cleanUnit === 'G' && tamanhoInfo.unidadePadronizada === 'KG') {
+                quantidadeAjustadaPadronizada = adjustedQuantity / 1000;
+            } else if (unitInfo.cleanUnit === 'ML' && tamanhoInfo.unidadePadronizada === 'L') {
+                quantidadeAjustadaPadronizada = adjustedQuantity / 1000;
             }
             
-            const unidadesCalculadas = qTribPadronizada / tamanhoInfo.litrosOuKgPorUnidade;
+            const unidadesCalculadas = quantidadeAjustadaPadronizada / tamanhoInfo.litrosOuKgPorUnidade;
             
             // Se detectou pack, verificar se o cálculo bate
             if (pack) {
@@ -133,32 +157,33 @@ const unidadesInternasDe = (item) => {
                 if (Math.abs(unidadesArredondadas - unidadesCalculadas) < 0.1) {
                     return {
                         unidades: unidadesArredondadas,
-                        tipo: 'calculado_com_pack',
-                        observacao: `${unidadesArredondadas} unidades (${tamanhoInfo.valor}${uTrib === 'G' || uTrib === 'KG' ? 'G' : 'ML'} cada, pack ${pack})`
+                        tipo: 'calculado_com_pack_e_multiplicador',
+                        observacao: `${unidadesArredondadas} unidades (${tamanhoInfo.valor}${unitInfo.cleanUnit === 'G' || unitInfo.cleanUnit === 'KG' ? 'G' : 'ML'} cada, pack ${pack}${unitInfo.multiplier > 1 ? ', qtd ajustada: ' + quantity + ' × ' + unitInfo.multiplier + ' = ' + adjustedQuantity : ''})`
                     };
                 }
             }
             
             return {
                 unidades: unidadesCalculadas,
-                tipo: 'calculado',
-                observacao: `${unidadesCalculadas.toFixed(2)} unidades (${tamanhoInfo.valor}${uTrib === 'G' || uTrib === 'KG' ? 'G' : 'ML'} cada)`
+                tipo: 'calculado_com_multiplicador',
+                observacao: `${unidadesCalculadas.toFixed(2)} unidades (${tamanhoInfo.valor}${unitInfo.cleanUnit === 'G' || unitInfo.cleanUnit === 'KG' ? 'G' : 'ML'} cada${unitInfo.multiplier > 1 ? ', qtd ajustada: ' + quantity + ' × ' + unitInfo.multiplier + ' = ' + adjustedQuantity : ''})`
             };
         } else {
-            // Não foi possível deduzir, mostrar R$/KG ou R$/L
+            // Não foi possível deduzir, mostrar R$/KG ou R$/L com quantidade ajustada
             return {
-                unidades: qTrib,
-                tipo: 'unidade_nao_identificada',
-                observacao: `R$/${uTrib} - unidade não identificada`
+                unidades: adjustedQuantity,
+                tipo: 'unidade_nao_identificada_com_multiplicador',
+                observacao: `R$/${unitInfo.cleanUnit} - unidade não identificada${unitInfo.multiplier > 1 ? ' (qtd ajustada: ' + quantity + ' × ' + unitInfo.multiplier + ' = ' + adjustedQuantity + ')' : ''}`
             };
         }
     }
     
-    // Fallback: usar qTrib
+    // Fallback: usar quantidade ajustada
+    const fallbackQuantity = adjustedQuantity || quantity || 1;
     return {
-        unidades: qTrib || 1,
-        tipo: 'fallback',
-        observacao: `${qTrib} ${uTrib} (fallback)`
+        unidades: fallbackQuantity,
+        tipo: 'fallback_com_multiplicador',
+        observacao: `${fallbackQuantity} ${unitInfo.cleanUnit || uTrib || uCom}${unitInfo.multiplier > 1 ? ' (ajustado: ' + (quantity || 1) + ' × ' + unitInfo.multiplier + ')' : ''} (fallback)`
     };
 };
 
@@ -415,15 +440,21 @@ const parseXMLData = (xmlBuffer) => {
         // Calcular preço por litro/kg quando disponível
         const porLitroOuKg = calcularPorLitroOuKg(unitarioReal, item.xProd);
         
+        // Detectar multiplicadores para ajustar quantidade exibida
+        const uTribInfo = detectMultiplierInUnit(item.uTrib);
+        const uComInfo = detectMultiplierInUnit(item.uCom);
+        const activeMultiplier = uTribInfo.multiplier > 1 ? uTribInfo.multiplier : uComInfo.multiplier;
+        const quantidadeAjustada = activeMultiplier > 1 ? item.qCom * activeMultiplier : item.qCom;
+        
         // Preço unitário antigo (para compatibilidade)
         const vProdLiquido = item.vProd - descontoAplicado;
-        const precoXML_unit = item.qCom > 0 ? vProdLiquido / item.qCom : 0;
+        const precoXML_unit = quantidadeAjustada > 0 ? vProdLiquido / quantidadeAjustada : 0;
 
         items.push({
             codigo: item.codigo,
             descricao: item.descricao,
             uCom: item.uCom,
-            qCom: item.qCom,
+            qCom: quantidadeAjustada,
             uTrib: item.uTrib,
             qTrib: item.qTrib,
             vProd: item.vProd,
@@ -572,6 +603,12 @@ app.post('/api/comparar', upload.fields([
             let matchType = 'NULL';
             let eanExcel = '';
             let observacoes = '';
+            
+            // Detectar multiplicadores para este item também
+            const uTribInfo = detectMultiplierInUnit(item.uTrib);
+            const uComInfo = detectMultiplierInUnit(item.uCom);
+            const activeMultiplier = uTribInfo.multiplier > 1 ? uTribInfo.multiplier : uComInfo.multiplier;
+            const quantidadeAjustada = activeMultiplier > 1 ? item.qCom * activeMultiplier : item.qCom;
 
             // 1º: Tentar match por cEAN
             if (item.ean && mapByEan[item.ean]) {
@@ -653,7 +690,7 @@ app.post('/api/comparar', upload.fields([
             results.push({
                 codigo: item.codigo,
                 descricao: item.descricao,
-                quantidadeXml: item.qCom,
+                quantidadeXml: quantidadeAjustada,
                 unidade: item.uCom || item.uTrib,
                 ean: item.ean || '',
                 eanTrib: item.eanTrib || '',
