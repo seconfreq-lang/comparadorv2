@@ -191,7 +191,7 @@ class NFEComparator {
         tbody.innerHTML = '';
 
         if (this.filteredData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="13" class="text-center">Nenhum resultado encontrado</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15" class="text-center">Nenhum resultado encontrado</td></tr>';
             return;
         }
 
@@ -206,6 +206,8 @@ class NFEComparator {
                 <td>${item.descricao}</td>
                 <td class="text-right">${this.formatNumber(item.quantidadeXml)}</td>
                 <td class="text-center">${item.unidade}</td>
+                <td class="currency">${this.formatCurrency(item.vProd || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.vDesc || 0)}</td>
                 <td class="currency">${this.formatCurrency(item.precoXML_unit)}</td>
                 <td class="currency">${this.formatCurrency(item.precoTabela)}</td>
                 <td class="currency">${this.formatCurrency(item.precoMinimo)}</td>

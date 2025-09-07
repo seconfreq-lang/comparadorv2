@@ -141,25 +141,20 @@ const parseXMLData = (xmlBuffer) => {
         const uTrib = String(prod.uTrib || '');
         const qTrib = parseFloat(prod.qTrib || 0);
         const vUnTrib = parseFloat(prod.vUnTrib || 0);
+        const vDesc = parseFloat(prod.vDesc || 0);
 
         // Normalizar EANs
         const ean = normEAN(prod.cEAN);
         const eanTrib = normEAN(prod.cEANTrib);
 
-        // Calcular preço unitário
+        // Calcular preço unitário: (Valor Produto - Desconto) / Quantidade
+        const vProdLiquido = vProd - vDesc; // Valor do produto após desconto
         let precoXML_unit = 0;
         
-        if (vUnTrib > 0) {
-            precoXML_unit = vUnTrib;
+        if (qCom > 0) {
+            precoXML_unit = vProdLiquido / qCom;
         } else {
-            const multiplicador = detectMultiplier(descricao);
-            if (multiplicador > 1) {
-                precoXML_unit = vUnCom / multiplicador;
-            } else if (qCom > 0) {
-                precoXML_unit = vProd / qCom;
-            } else {
-                precoXML_unit = vUnCom;
-            }
+            precoXML_unit = 0; // Se não há quantidade, preço unitário é 0
         }
 
         items.push({
@@ -169,6 +164,9 @@ const parseXMLData = (xmlBuffer) => {
             qCom,
             uTrib,
             qTrib,
+            vProd,
+            vDesc,
+            vProdLiquido,
             precoXML_unit: Math.round(precoXML_unit * 10000) / 10000,
             ean,
             eanTrib
@@ -385,6 +383,9 @@ const handler = async (req, res) => {
                         ean: item.ean || '',
                         eanTrib: item.eanTrib || '',
                         eanExcel,
+                        vProd: item.vProd || 0,
+                        vDesc: item.vDesc || 0,
+                        vProdLiquido: item.vProdLiquido || 0,
                         precoXML_unit: item.precoXML_unit,
                         precoTabela,
                         precoMinimo,
