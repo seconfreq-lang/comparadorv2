@@ -22,7 +22,7 @@ const upload = multer({
     }
 });
 
-// Funções utilitárias
+// Funções utilitárias para cálculos
 const onlyDigits = (s) => String(s ?? '').replace(/\D/g, '');
 
 const normEAN = (s) => {
@@ -35,6 +35,180 @@ const normEAN = (s) => {
     const result = [8, 12, 13, 14].includes(d.length) ? d : null;
     console.log("DEBUG normEAN result:", result);
     return result;
+};
+
+// Normalizar números (vírgula para ponto)
+const normalizeNumber = (value) => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+        return parseFloat(value.replace(',', '.')) || 0;
+    }
+    return 0;
+};
+
+// Parse de tamanho/unidade do nome do produto
+const parseTamanhoUnidade = (xProd) => {
+    if (!xProd) return { valor: null, unidadePadronizada: null, litrosOuKgPorUnidade: null };
+    
+    // Regex para extrair tamanho: número seguido de unidade
+    const tamanhoMatch = xProd.match(/(\d+(?:[.,]\d+)?)\s*(G|KG|ML|L|LITRO|LITROS)\b/i);
+    
+    if (tamanhoMatch) {
+        const valor = parseFloat(tamanhoMatch[1].replace(',', '.'));
+        const unidade = tamanhoMatch[2].toUpperCase();
+        
+        let unidadePadronizada;
+        let litrosOuKgPorUnidade;
+        
+        switch (unidade) {
+            case 'G':
+                unidadePadronizada = 'KG';
+                litrosOuKgPorUnidade = valor / 1000;
+                break;
+            case 'KG':
+                unidadePadronizada = 'KG';
+                litrosOuKgPorUnidade = valor;
+                break;
+            case 'ML':
+                unidadePadronizada = 'L';
+                litrosOuKgPorUnidade = valor / 1000;
+                break;
+            case 'L':
+            case 'LITRO':
+            case 'LITROS':
+                unidadePadronizada = 'L';
+                litrosOuKgPorUnidade = valor;
+                break;
+            default:
+                unidadePadronizada = null;
+                litrosOuKgPorUnidade = null;
+        }
+        
+        return { valor, unidadePadronizada, litrosOuKgPorUnidade };
+    }
+    
+    return { valor: null, unidadePadronizada: null, litrosOuKgPorUnidade: null };
+};
+
+// Detectar pack/caixa no nome
+const detectPack = (xProd) => {
+    if (!xProd) return null;
+    
+    const packMatch = xProd.match(/(\d+)\s*(U|UN|UNID|PACK)\b/i);
+    return packMatch ? parseInt(packMatch[1]) : null;
+};
+
+// Calcular unidades internas
+const unidadesInternasDe = (item) => {
+    const { uTrib, qTrib, xProd } = item;
+    
+    // Se uTrib é unidade direta (latas, garrafas, peças)
+    if (['LAT', 'GR', 'PEC', 'UN', 'UN1', 'PC1'].includes(uTrib)) {
+        return {
+            unidades: qTrib,
+            tipo: 'unidade_direta',
+            observacao: `${qTrib} ${uTrib}`
+        };
+    }
+    
+    // Se uTrib é massa/volume, deduzir pela gramagem/volume do produto
+    if (['KG', 'G', 'L', 'ML'].includes(uTrib)) {
+        const tamanhoInfo = parseTamanhoUnidade(xProd);
+        const pack = detectPack(xProd);
+        
+        if (tamanhoInfo.litrosOuKgPorUnidade) {
+            // Converter qTrib para unidade padronizada se necessário
+            let qTribPadronizada = qTrib;
+            if (uTrib === 'G' && tamanhoInfo.unidadePadronizada === 'KG') {
+                qTribPadronizada = qTrib / 1000;
+            } else if (uTrib === 'ML' && tamanhoInfo.unidadePadronizada === 'L') {
+                qTribPadronizada = qTrib / 1000;
+            }
+            
+            const unidadesCalculadas = qTribPadronizada / tamanhoInfo.litrosOuKgPorUnidade;
+            
+            // Se detectou pack, verificar se o cálculo bate
+            if (pack) {
+                const unidadesArredondadas = Math.round(unidadesCalculadas);
+                if (Math.abs(unidadesArredondadas - unidadesCalculadas) < 0.1) {
+                    return {
+                        unidades: unidadesArredondadas,
+                        tipo: 'calculado_com_pack',
+                        observacao: `${unidadesArredondadas} unidades (${tamanhoInfo.valor}${uTrib === 'G' || uTrib === 'KG' ? 'G' : 'ML'} cada, pack ${pack})`
+                    };
+                }
+            }
+            
+            return {
+                unidades: unidadesCalculadas,
+                tipo: 'calculado',
+                observacao: `${unidadesCalculadas.toFixed(2)} unidades (${tamanhoInfo.valor}${uTrib === 'G' || uTrib === 'KG' ? 'G' : 'ML'} cada)`
+            };
+        } else {
+            // Não foi possível deduzir, mostrar R$/KG ou R$/L
+            return {
+                unidades: qTrib,
+                tipo: 'unidade_nao_identificada',
+                observacao: `R$/${uTrib} - unidade não identificada`
+            };
+        }
+    }
+    
+    // Fallback: usar qTrib
+    return {
+        unidades: qTrib || 1,
+        tipo: 'fallback',
+        observacao: `${qTrib} ${uTrib} (fallback)`
+    };
+};
+
+// Verificar se ICMS-ST deve ser cobrado no item
+const isSTCobradoNoItem = (icmsData) => {
+    if (!icmsData) return false;
+    
+    // Procurar por vICMSST em diferentes estruturas possíveis
+    const vICMSST = icmsData.vICMSST || 
+                   (icmsData.ICMS10 && icmsData.ICMS10.vICMSST) ||
+                   (icmsData.ICMS30 && icmsData.ICMS30.vICMSST) ||
+                   0;
+    
+    // Verificar CST para garantir que não é CST=60 (ST retido anteriormente)
+    const cst = icmsData.CST || 
+               (icmsData.ICMS10 && icmsData.ICMS10.CST) ||
+               (icmsData.ICMS30 && icmsData.ICMS30.CST) ||
+               (icmsData.ICMS60 && icmsData.ICMS60.CST) ||
+               '';
+    
+    return vICMSST > 0 && cst !== '60';
+};
+
+// Calcular desconto rateado
+const descontoRateado = (itens, vDescTotal) => {
+    if (!vDescTotal || vDescTotal <= 0) return itens.map(() => 0);
+    
+    const somaVProd = itens.reduce((sum, item) => sum + (item.vProd || 0), 0);
+    
+    if (somaVProd <= 0) return itens.map(() => 0);
+    
+    return itens.map(item => {
+        const vProd = item.vProd || 0;
+        return (vProd * vDescTotal) / somaVProd;
+    });
+};
+
+// Calcular preço por litro ou kg
+const calcularPorLitroOuKg = (unitarioReal, xProd) => {
+    const tamanhoInfo = parseTamanhoUnidade(xProd);
+    
+    if (tamanhoInfo.litrosOuKgPorUnidade && tamanhoInfo.unidadePadronizada) {
+        const precoPortLitroOuKg = unitarioReal / tamanhoInfo.litrosOuKgPorUnidade;
+        return {
+            tipo: tamanhoInfo.unidadePadronizada,
+            unitario: precoPortLitroOuKg
+        };
+    }
+    
+    return { tipo: null, unitario: null };
 };
 
 // Função para detectar multiplicador em descrição
@@ -117,6 +291,7 @@ const parseXMLData = (xmlBuffer) => {
 
     const xmlData = parser.parse(xmlBuffer.toString('utf8'));
     const items = [];
+    let vDescTotal = 0;
 
     // Encontrar detalhes dos produtos
     let detalhes = [];
@@ -139,52 +314,158 @@ const parseXMLData = (xmlBuffer) => {
         throw new Error('Nenhum produto encontrado no XML da NFe');
     }
 
+    // Buscar desconto total da NF
+    const possibleTotalPaths = [
+        xmlData.nfeProc?.NFe?.infNFe?.total?.ICMSTot,
+        xmlData.NFe?.infNFe?.total?.ICMSTot,
+        xmlData.infNFe?.total?.ICMSTot
+    ];
+
+    for (const totalPath of possibleTotalPaths) {
+        if (totalPath && totalPath.vDesc) {
+            vDescTotal = normalizeNumber(totalPath.vDesc);
+            break;
+        }
+    }
+
+    // Primeira passada: coletar dados básicos
+    const itemsBasicos = [];
     for (const det of detalhes) {
         const prod = det.prod;
+        const imposto = det.imposto;
         if (!prod) continue;
 
         const codigo = String(prod.cProd || '');
         const descricao = String(prod.xProd || '');
         const uCom = String(prod.uCom || '');
-        const qCom = parseFloat(prod.qCom || 0);
-        const vUnCom = parseFloat(prod.vUnCom || 0);
-        const vProd = parseFloat(prod.vProd || 0);
+        const qCom = normalizeNumber(prod.qCom);
+        const vUnCom = normalizeNumber(prod.vUnCom);
+        const vProd = normalizeNumber(prod.vProd);
         const uTrib = String(prod.uTrib || '');
-        const qTrib = parseFloat(prod.qTrib || 0);
-        const vUnTrib = parseFloat(prod.vUnTrib || 0);
-        const vDesc = parseFloat(prod.vDesc || 0);
+        const qTrib = normalizeNumber(prod.qTrib);
+        const vUnTrib = normalizeNumber(prod.vUnTrib);
+        const vDesc = normalizeNumber(prod.vDesc);
+        const vOutro = normalizeNumber(prod.vOutro);
 
         // Normalizar EANs
         const ean = normEAN(prod.cEAN);
         const eanTrib = normEAN(prod.cEANTrib);
 
-        // Calcular preço unitário: (Valor Produto - Desconto) / Quantidade
-        const vProdLiquido = vProd - vDesc; // Valor do produto após desconto
-        let precoXML_unit = 0;
+        // Buscar impostos
+        let vIPI = 0;
+        let vICMSST = 0;
         
-        if (qCom > 0) {
-            precoXML_unit = vProdLiquido / qCom;
-        } else {
-            precoXML_unit = 0; // Se não há quantidade, preço unitário é 0
+        if (imposto) {
+            // IPI
+            if (imposto.IPI && imposto.IPI.IPITrib && imposto.IPI.IPITrib.vIPI) {
+                vIPI = normalizeNumber(imposto.IPI.IPITrib.vIPI);
+            }
+            
+            // ICMS-ST
+            if (imposto.ICMS) {
+                const icmsData = imposto.ICMS;
+                if (isSTCobradoNoItem(icmsData)) {
+                    vICMSST = normalizeNumber(
+                        icmsData.vICMSST || 
+                        (icmsData.ICMS10 && icmsData.ICMS10.vICMSST) ||
+                        (icmsData.ICMS30 && icmsData.ICMS30.vICMSST) ||
+                        0
+                    );
+                }
+            }
         }
 
-        items.push({
+        itemsBasicos.push({
             codigo,
             descricao,
+            xProd: descricao, // Para compatibilidade com funções utilitárias
             uCom,
             qCom,
             uTrib,
             qTrib,
             vProd,
             vDesc,
-            vProdLiquido,
-            precoXML_unit: Math.round(precoXML_unit * 10000) / 10000,
+            vOutro,
+            vIPI,
+            vICMSST,
             ean,
             eanTrib
         });
     }
 
-    return items;
+    // Calcular desconto rateado se necessário
+    const descontosPorItem = descontoRateado(itemsBasicos, vDescTotal);
+
+    // Segunda passada: enriquecer com cálculos completos
+    for (let i = 0; i < itemsBasicos.length; i++) {
+        const item = itemsBasicos[i];
+        
+        // Determinar desconto aplicado
+        const descontoAplicado = item.vDesc > 0 ? item.vDesc : descontosPorItem[i];
+        
+        // Calcular total do item (preço pago)
+        const totalItem = (item.vProd - descontoAplicado) + item.vIPI + item.vICMSST + item.vOutro;
+        
+        // Calcular unidades internas
+        const unidadesInfo = unidadesInternasDe(item);
+        
+        // Calcular unitário real
+        const unitarioReal = unidadesInfo.unidades > 0 ? totalItem / unidadesInfo.unidades : 0;
+        
+        // Calcular preço por litro/kg quando disponível
+        const porLitroOuKg = calcularPorLitroOuKg(unitarioReal, item.xProd);
+        
+        // Preço unitário antigo (para compatibilidade)
+        const vProdLiquido = item.vProd - descontoAplicado;
+        const precoXML_unit = item.qCom > 0 ? vProdLiquido / item.qCom : 0;
+
+        items.push({
+            codigo: item.codigo,
+            descricao: item.descricao,
+            uCom: item.uCom,
+            qCom: item.qCom,
+            uTrib: item.uTrib,
+            qTrib: item.qTrib,
+            vProd: item.vProd,
+            vDesc: item.vDesc,
+            vProdLiquido,
+            precoXML_unit: Math.round(precoXML_unit * 10000) / 10000,
+            ean: item.ean,
+            eanTrib: item.eanTrib,
+            
+            // Novos campos de cálculo
+            precoBruto: item.vProd,
+            descontoAplicado: Math.round(descontoAplicado * 100) / 100,
+            ipi: item.vIPI,
+            icmsst: item.vICMSST,
+            outros: item.vOutro,
+            totalItem: Math.round(totalItem * 100) / 100,
+            unidadesInternas: Math.round(unidadesInfo.unidades * 100) / 100,
+            unitarioReal: Math.round(unitarioReal * 10000) / 10000,
+            porLitroOuKg,
+            notasCalculo: {
+                uCom: item.uCom,
+                uTrib: item.uTrib,
+                qCom: item.qCom,
+                qTrib: item.qTrib,
+                tipoUnidade: unidadesInfo.tipo,
+                observacaoUnidade: unidadesInfo.observacao,
+                packDetectado: detectPack(item.xProd),
+                tamanhoDetectado: parseTamanhoUnidade(item.xProd)
+            }
+        });
+    }
+
+    // Buscar vNF total para conferência
+    let vNFTotal = 0;
+    for (const totalPath of possibleTotalPaths) {
+        if (totalPath && totalPath.vNF) {
+            vNFTotal = normalizeNumber(totalPath.vNF);
+            break;
+        }
+    }
+    
+    return { items, vDescTotal, vNFTotal };
 };
 
 // Parse do Excel
@@ -271,7 +552,14 @@ app.post('/api/comparar', upload.fields([
         const excelBuffer = req.files.xlsx[0].buffer;
 
         // Parse dos arquivos
-        const xmlItems = parseXMLData(xmlBuffer);
+        // Obter margem configurada pelo usuário (padrão 50% = 1.5x)
+        const marginPercent = parseFloat(req.body.marginPercent) || 50;
+        const multiplier = 1 + (marginPercent / 100);
+        
+        const xmlResult = parseXMLData(xmlBuffer);
+        const xmlItems = xmlResult.items;
+        const vDescTotal = xmlResult.vDescTotal;
+        const vNFTotal = xmlResult.vNFTotal;
         const { mapByEan, mapByCode, rows } = parseExcelData(excelBuffer);
 
         console.log(`✓ Parsed ${xmlItems.length} items from XML`);
@@ -348,11 +636,11 @@ app.post('/api/comparar', upload.fields([
                 }
             }
 
-            // Calcular preço mínimo e status
-            const precoMinimo = Math.round(item.precoXML_unit * 1.5 * 10000) / 10000;
+            // Calcular preço mínimo baseado no unitário real com margem configurável
+            const precoMinimo = Math.round(item.unitarioReal * multiplier * 10000) / 10000;
             let status;
 
-            if (item.precoXML_unit <= 0) {
+            if (item.unitarioReal <= 0) {
                 status = 'ERRO_PARSING';
             } else if (precoTabela <= 0) {
                 status = 'SEM_PRECO';
@@ -378,7 +666,19 @@ app.post('/api/comparar', upload.fields([
                 precoMinimo,
                 status,
                 matchType,
-                observacoes
+                observacoes,
+                
+                // Novos campos
+                precoBruto: item.precoBruto,
+                descontoAplicado: item.descontoAplicado,
+                ipi: item.ipi,
+                icmsst: item.icmsst,
+                outros: item.outros,
+                totalItem: item.totalItem,
+                unidadesInternas: item.unidadesInternas,
+                unitarioReal: item.unitarioReal,
+                porLitroOuKg: item.porLitroOuKg,
+                notasCalculo: item.notasCalculo
             });
         }
 
@@ -402,7 +702,24 @@ app.post('/api/comparar', upload.fields([
             });
         });
 
-        res.json(results);
+        // Calcular totais para conferência
+        const somaItens = results.reduce((sum, item) => sum + (item.totalItem || 0), 0);
+        
+        const diferenca = somaItens - vNFTotal;
+        
+        res.json({
+            items: results,
+            conferencia: {
+                somaItens: Math.round(somaItens * 100) / 100,
+                vDescTotal,
+                vNFTotal: Math.round(vNFTotal * 100) / 100,
+                diferenca: Math.round(diferenca * 100) / 100
+            },
+            config: {
+                marginPercent: marginPercent,
+                multiplier: multiplier
+            }
+        });
 
     } catch (error) {
         console.error('Erro no endpoint:', error);

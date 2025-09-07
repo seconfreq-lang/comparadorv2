@@ -5,9 +5,12 @@ class NFEComparator {
         this.statusFilter = 'ALL';
         this.matchFilter = 'ALL';
         this.searchQuery = '';
+        this.conferencia = null;
+        this.marginPercent = 50; // Padrão 50% = 1.5x
 
         this.initializeEventListeners();
         this.updateButtonStates();
+        this.updateMarginDisplay();
     }
 
     initializeEventListeners() {
@@ -30,6 +33,11 @@ class NFEComparator {
             this.exportToCSV();
         });
 
+        // Details button
+        document.getElementById('detailsBtn').addEventListener('click', () => {
+            this.showCalculationDetails();
+        });
+
         // Status filters
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -48,6 +56,16 @@ class NFEComparator {
         document.getElementById('searchInput').addEventListener('input', (e) => {
             this.searchQuery = e.target.value.toLowerCase();
             this.applyFilters();
+        });
+        
+        // Margin percent
+        document.getElementById('marginPercent').addEventListener('input', (e) => {
+            this.marginPercent = parseFloat(e.target.value) || 50;
+            this.updateMarginDisplay();
+            // Recalcular se já temos dados
+            if (this.data.length > 0) {
+                this.recalculateWithNewMargin();
+            }
         });
     }
 
@@ -88,6 +106,12 @@ class NFEComparator {
         if (compareBtn) {
             compareBtn.disabled = !xmlFile || !xlsxFile;
         }
+        
+        // Atualizar outros botões se necessário
+        const detailsBtn = document.getElementById('detailsBtn');
+        if (detailsBtn && !this.data.length) {
+            detailsBtn.disabled = true;
+        }
     }
 
     async compareFiles() {
@@ -106,6 +130,7 @@ class NFEComparator {
             const formData = new FormData();
             formData.append('xml', xmlFile);
             formData.append('xlsx', xlsxFile);
+            formData.append('marginPercent', this.marginPercent.toString());
 
             const response = await fetch('/api/comparar', {
                 method: 'POST',
@@ -117,12 +142,15 @@ class NFEComparator {
                 throw new Error(errorData.error || 'Erro na comparação');
             }
 
-            const data = await response.json();
-            this.data = data;
+            const result = await response.json();
+            this.data = result.items || result; // Compatibilidade
+            this.conferencia = result.conferencia;
             this.applyFilters();
             this.updateStats();
+            this.updateConferencia();
             
             document.getElementById('exportBtn').disabled = false;
+            document.getElementById('detailsBtn').disabled = false;
 
             // Log diagnóstico no console
             console.log('=== DADOS RECEBIDOS ===');
@@ -191,12 +219,15 @@ class NFEComparator {
         tbody.innerHTML = '';
 
         if (this.filteredData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="15" class="text-center">Nenhum resultado encontrado</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="21" class="text-center">Nenhum resultado encontrado</td></tr>';
             return;
         }
 
         this.filteredData.forEach(item => {
             const row = document.createElement('tr');
+            
+            const porLitroOuKgText = this.formatPorLitroOuKg(item.porLitroOuKg);
+            const unidadesText = this.formatUnidades(item.unidadesInternas, item.notasCalculo?.observacaoUnidade);
             
             row.innerHTML = `
                 <td class="font-mono">${item.codigo}</td>
@@ -206,9 +237,15 @@ class NFEComparator {
                 <td>${item.descricao}</td>
                 <td class="text-right">${this.formatNumber(item.quantidadeXml)}</td>
                 <td class="text-center">${item.unidade}</td>
-                <td class="currency">${this.formatCurrency(item.vProd || 0)}</td>
-                <td class="currency">${this.formatCurrency(item.vDesc || 0)}</td>
-                <td class="currency">${this.formatCurrency(item.precoXML_unit)}</td>
+                <td class="currency">${this.formatCurrency(item.precoBruto || item.vProd || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.descontoAplicado || item.vDesc || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.ipi || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.icmsst || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.outros || 0)}</td>
+                <td class="currency">${this.formatCurrency(item.totalItem || 0)}</td>
+                <td class="text-right" title="${item.notasCalculo?.observacaoUnidade || ''}">${unidadesText}</td>
+                <td class="currency">${this.formatCurrency(item.unitarioReal || item.precoXML_unit || 0)}</td>
+                <td class="text-right">${porLitroOuKgText}</td>
                 <td class="currency">${this.formatCurrency(item.precoTabela)}</td>
                 <td class="currency">${this.formatCurrency(item.precoMinimo)}</td>
                 <td><span class="badge status-${item.status}">${this.formatStatus(item.status)}</span></td>
@@ -278,19 +315,42 @@ class NFEComparator {
             'ean',
             'eanTrib',
             'eanExcel',
-            'precoXML_unit',
+            'precoBruto',
+            'descontoAplicado',
+            'ipi',
+            'icmsst',
+            'outros',
+            'totalItem',
+            'unidadesInternas',
+            'unitarioReal',
+            'porLitroOuKg_tipo',
+            'porLitroOuKg_valor',
             'precoTabela',
             'precoMinimo',
+            'marginPercent',
             'status',
             'matchType',
-            'observacoes'
+            'observacoes',
+            'observacaoUnidade'
         ];
 
         const csvContent = [
             headers.join(','),
             ...this.filteredData.map(item => 
                 headers.map(header => {
-                    const value = item[header] ?? '';
+                    let value;
+                    if (header === 'porLitroOuKg_tipo') {
+                        value = item.porLitroOuKg?.tipo || '';
+                    } else if (header === 'porLitroOuKg_valor') {
+                        value = item.porLitroOuKg?.unitario || '';
+                    } else if (header === 'observacaoUnidade') {
+                        value = item.notasCalculo?.observacaoUnidade || '';
+                    } else if (header === 'marginPercent') {
+                        value = this.marginPercent;
+                    } else {
+                        value = item[header] ?? '';
+                    }
+                    
                     // Escape quotes and wrap in quotes if contains comma or quotes
                     const stringValue = String(value).replace(/"/g, '""');
                     return stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')
@@ -340,6 +400,124 @@ class NFEComparator {
             'ERRO_PARSING': 'Erro Parsing'
         };
         return statusMap[status] || status;
+    }
+
+    formatPorLitroOuKg(porLitroOuKg) {
+        if (!porLitroOuKg || !porLitroOuKg.tipo || !porLitroOuKg.unitario) {
+            return '-';
+        }
+        return `R$/${porLitroOuKg.tipo} ${this.formatNumber(porLitroOuKg.unitario)}`;
+    }
+
+    formatUnidades(unidades, observacao) {
+        if (!unidades) return '-';
+        if (observacao && observacao.includes('unidade não identificada')) {
+            return `⚠️ ${this.formatNumber(unidades)}`;
+        }
+        return this.formatNumber(unidades);
+    }
+
+    updateConferencia() {
+        if (!this.conferencia) return;
+
+        const somaItensEl = document.getElementById('somaItens');
+        const vNFEl = document.getElementById('vNF');
+        const diferencaEl = document.getElementById('diferenca');
+        const statusEl = document.getElementById('statusConferencia');
+
+        if (somaItensEl) {
+            somaItensEl.textContent = this.formatCurrency(this.conferencia.somaItens);
+        }
+
+        if (vNFEl) {
+            vNFEl.textContent = this.formatCurrency(this.conferencia.vNFTotal || 0);
+        }
+
+        const diferenca = this.conferencia.diferenca || 0;
+        if (diferencaEl) {
+            diferencaEl.textContent = this.formatCurrency(diferenca);
+        }
+
+        if (statusEl) {
+            if (Math.abs(diferenca) < 0.01) {
+                statusEl.innerHTML = '✅ OK';
+                statusEl.className = 'conference-status ok';
+            } else {
+                statusEl.innerHTML = '⚠️ DIFERENÇA';
+                statusEl.className = 'conference-status warning';
+            }
+        }
+    }
+
+    showCalculationDetails() {
+        if (this.filteredData.length === 0) {
+            this.showError('Nenhum item selecionado para mostrar detalhes');
+            return;
+        }
+
+        const item = this.filteredData[0]; // Mostrar detalhes do primeiro item filtrado
+        const details = `
+Detalhes de Cálculo - ${item.descricao}
+
+` +
+            `Preço Bruto: R$ ${(item.precoBruto || 0).toFixed(2)}
+` +
+            `Desconto Aplicado: R$ ${(item.descontoAplicado || 0).toFixed(2)}
+` +
+            `IPI: R$ ${(item.ipi || 0).toFixed(2)}
+` +
+            `ICMS-ST: R$ ${(item.icmsst || 0).toFixed(2)}
+` +
+            `Outros: R$ ${(item.outros || 0).toFixed(2)}
+` +
+            `Total Item: R$ ${(item.totalItem || 0).toFixed(2)}
+
+` +
+            `Unidades Calculadas: ${item.unidadesInternas || 'N/A'}
+` +
+            `Tipo de Unidade: ${item.notasCalculo?.tipoUnidade || 'N/A'}
+` +
+            `Observação: ${item.notasCalculo?.observacaoUnidade || 'N/A'}
+
+` +
+            `Unitário Real: R$ ${(item.unitarioReal || 0).toFixed(4)}
+` +
+            `Fórmula: Total Item (ç Unidades) = ${(item.totalItem || 0).toFixed(2)} ÷ ${item.unidadesInternas || 1} = R$ ${(item.unitarioReal || 0).toFixed(4)}`;
+
+        alert(details);
+    }
+    
+    updateMarginDisplay() {
+        const marginDisplay = document.getElementById('marginDisplay');
+        const multiplier = (1 + this.marginPercent / 100).toFixed(1);
+        if (marginDisplay) {
+            marginDisplay.textContent = multiplier;
+        }
+    }
+    
+    recalculateWithNewMargin() {
+        // Recalcular preço mínimo e status para todos os itens
+        const multiplier = 1 + this.marginPercent / 100;
+        
+        this.data.forEach(item => {
+            const unitarioReal = item.unitarioReal || 0;
+            item.precoMinimo = Math.round(unitarioReal * multiplier * 10000) / 10000;
+            
+            // Recalcular status
+            if (unitarioReal <= 0) {
+                item.status = 'ERRO_PARSING';
+            } else if (item.precoTabela <= 0) {
+                item.status = 'SEM_PRECO';
+            } else if (item.precoTabela >= item.precoMinimo) {
+                item.status = 'OK';
+            } else {
+                item.status = 'ABAIXO_MINIMO';
+            }
+        });
+        
+        // Reaplicar filtros e atualizar exibição
+        this.applyFilters();
+        this.updateStats();
     }
 
     showLoading(show) {

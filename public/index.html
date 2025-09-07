@@ -34,12 +34,25 @@
                 </label>
             </div>
 
+            <div class="margin-config">
+                <label for="marginPercent" class="margin-label">
+                    📊 Margem para Comparação (%):
+                </label>
+                <input type="number" id="marginPercent" class="margin-input" 
+                       value="50" min="0" max="1000" step="0.1" 
+                       placeholder="Ex: 50 para 1.5x">
+                <span class="margin-help">Exemplo: 50% = 1.5x o unitário real</span>
+            </div>
+
             <div class="button-group">
                 <button id="compareBtn" class="btn btn-primary" disabled>
                     🔄 Comparar
                 </button>
                 <button id="exportBtn" class="btn btn-secondary" disabled>
                     📥 Exportar CSV
+                </button>
+                <button id="detailsBtn" class="btn btn-info" disabled>
+                    🔍 Detalhes Cálculo
                 </button>
             </div>
         </section>
@@ -70,6 +83,27 @@
 
             <div class="search-section">
                 <input type="text" id="searchInput" placeholder="🔍 Buscar por código ou descrição..." />
+            </div>
+        </section>
+
+        <section class="conference-section">
+            <div class="conference-panel">
+                <h3>📊 Painel de Conferência</h3>
+                <div class="conference-info">
+                    <div class="conference-item">
+                        <span class="conference-label">Σ Total Itens:</span>
+                        <span class="conference-value" id="somaItens">R$ 0,00</span>
+                    </div>
+                    <div class="conference-item">
+                        <span class="conference-label">vNF (XML):</span>
+                        <span class="conference-value" id="vNF">R$ 0,00</span>
+                    </div>
+                    <div class="conference-item">
+                        <span class="conference-label">Diferença:</span>
+                        <span class="conference-value" id="diferenca">R$ 0,00</span>
+                        <span class="conference-status" id="statusConferencia"></span>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -135,11 +169,17 @@
                             <th>Descrição</th>
                             <th>Qtd XML</th>
                             <th>Unid</th>
-                            <th>Valor Produto</th>
-                            <th>Desconto</th>
-                            <th>Preço XML (unit)</th>
+                            <th>Preço Bruto</th>
+                            <th>Desc.</th>
+                            <th>IPI</th>
+                            <th>ST (cobrada)</th>
+                            <th>Outros</th>
+                            <th>Total Item</th>
+                            <th>Unidades</th>
+                            <th>Unitário (real)</th>
+                            <th>R$/L ou R$/KG</th>
                             <th>Preço Tabela</th>
-                            <th>Mínimo (1.5×)</th>
+                            <th>Mínimo (<span id="marginDisplay">1.5</span>×)</th>
                             <th>Status</th>
                             <th>Match Type</th>
                             <th>Observações</th>
