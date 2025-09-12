@@ -49,8 +49,45 @@ header p {
     margin-bottom: 30px;
 }
 
+/* Upload container com botão de limpeza */
+.upload-container {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
 .upload-label {
     cursor: pointer;
+    flex: 1;
+}
+
+.btn-clear {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+    min-width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-clear:hover {
+    background: #c0392b;
+    transform: scale(1.05);
+}
+
+.btn-clear:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .upload-area {

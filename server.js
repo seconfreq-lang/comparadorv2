@@ -607,7 +607,7 @@ const parseExcelData = (excelBuffer) => {
 
 // Endpoint principal
 app.post('/api/comparar', upload.fields([
-    { name: 'xml', maxCount: 1 },
+    { name: 'xml', maxCount: 10 }, // Permitir até 10 XMLs
     { name: 'xlsx', maxCount: 1 }
 ]), async (req, res) => {
     try {
@@ -618,7 +618,7 @@ app.post('/api/comparar', upload.fields([
             });
         }
 
-        const xmlBuffer = req.files.xml[0].buffer;
+        const xmlFiles = req.files.xml; // Array de arquivos XML
         const excelBuffer = req.files.xlsx[0].buffer;
 
         // Parse dos arquivos
@@ -626,18 +626,38 @@ app.post('/api/comparar', upload.fields([
         const marginPercent = parseFloat(req.body.marginPercent) || 50;
         const multiplier = 1 + (marginPercent / 100);
         
-        const xmlResult = parseXMLData(xmlBuffer);
-        const xmlItems = xmlResult.items;
-        const vDescTotal = xmlResult.vDescTotal;
-        const vNFTotal = xmlResult.vNFTotal;
+        // Processar todos os XMLs e combinar os itens
+        let allXmlItems = [];
+        let totalVDescTotal = 0;
+        let totalVNFTotal = 0;
+        
+        console.log(`✓ Processando ${xmlFiles.length} arquivo(s) XML`);
+        
+        for (let i = 0; i < xmlFiles.length; i++) {
+            const xmlBuffer = xmlFiles[i].buffer;
+            const xmlResult = parseXMLData(xmlBuffer);
+            
+            // Adicionar identificador do arquivo de origem em cada item
+            const itemsWithSource = xmlResult.items.map(item => ({
+                ...item,
+                arquivoOrigem: xmlFiles[i].originalname || `XML_${i + 1}`
+            }));
+            
+            allXmlItems = allXmlItems.concat(itemsWithSource);
+            totalVDescTotal += xmlResult.vDescTotal;
+            totalVNFTotal += xmlResult.vNFTotal;
+            
+            console.log(`  ✓ XML ${i + 1}: ${xmlResult.items.length} itens`);
+        }
+        
         const { mapByEan, mapByCode, rows } = parseExcelData(excelBuffer);
 
-        console.log(`✓ Parsed ${xmlItems.length} items from XML`);
+        console.log(`✓ Total de ${allXmlItems.length} itens de todos os XMLs`);
         console.log(`✓ Parsed ${Object.keys(mapByEan).length} EAN mappings from Excel`);
 
         const results = [];
 
-        for (const item of xmlItems) {
+        for (const item of allXmlItems) {
             let precoTabela = 0;
             let matchType = 'NULL';
             let eanExcel = '';
@@ -754,7 +774,8 @@ app.post('/api/comparar', upload.fields([
                 unidadesInternas: item.unidadesInternas,
                 unitarioReal: item.unitarioReal,
                 porLitroOuKg: item.porLitroOuKg,
-                notasCalculo: item.notasCalculo
+                notasCalculo: item.notasCalculo,
+                arquivoOrigem: item.arquivoOrigem
             });
         }
 
@@ -781,14 +802,14 @@ app.post('/api/comparar', upload.fields([
         // Calcular totais para conferência
         const somaItens = results.reduce((sum, item) => sum + (item.totalItem || 0), 0);
         
-        const diferenca = somaItens - vNFTotal;
+        const diferenca = somaItens - totalVNFTotal;
         
         res.json({
             items: results,
             conferencia: {
                 somaItens: Math.round(somaItens * 100) / 100,
-                vDescTotal,
-                vNFTotal: Math.round(vNFTotal * 100) / 100,
+                vDescTotal: totalVDescTotal,
+                vNFTotal: Math.round(totalVNFTotal * 100) / 100,
                 diferenca: Math.round(diferenca * 100) / 100
             },
             config: {

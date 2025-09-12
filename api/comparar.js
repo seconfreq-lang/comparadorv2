@@ -281,7 +281,7 @@ const parseExcelData = (excelBuffer) => {
 
 // Middleware para upload
 const uploadMiddleware = upload.fields([
-    { name: 'xml', maxCount: 1 },
+    { name: 'xml', maxCount: 10 }, // Permitir até 10 XMLs
     { name: 'xlsx', maxCount: 1 }
 ]);
 
@@ -316,19 +316,36 @@ const handler = async (req, res) => {
                     });
                 }
 
-                const xmlBuffer = req.files.xml[0].buffer;
+                const xmlFiles = req.files.xml; // Array de arquivos XML
                 const excelBuffer = req.files.xlsx[0].buffer;
 
-                // Parse dos arquivos
-                const xmlItems = parseXMLData(xmlBuffer);
+                // Parse dos arquivos - processar múltiplos XMLs
+                let allXmlItems = [];
+                
+                console.log(`✓ Processando ${xmlFiles.length} arquivo(s) XML`);
+                
+                for (let i = 0; i < xmlFiles.length; i++) {
+                    const xmlBuffer = xmlFiles[i].buffer;
+                    const xmlItems = parseXMLData(xmlBuffer);
+                    
+                    // Adicionar identificador do arquivo de origem
+                    const itemsWithSource = xmlItems.map(item => ({
+                        ...item,
+                        arquivoOrigem: xmlFiles[i].originalname || `XML_${i + 1}`
+                    }));
+                    
+                    allXmlItems = allXmlItems.concat(itemsWithSource);
+                    console.log(`  ✓ XML ${i + 1}: ${xmlItems.length} itens`);
+                }
+                
                 const { mapByEan, mapByCode, rows } = parseExcelData(excelBuffer);
 
-                console.log(`✓ Parsed ${xmlItems.length} items from XML`);
+                console.log(`✓ Total de ${allXmlItems.length} itens de todos os XMLs`);
                 console.log(`✓ Parsed ${Object.keys(mapByEan).length} EAN mappings from Excel`);
 
                 const results = [];
 
-                for (const item of xmlItems) {
+                for (const item of allXmlItems) {
                     let precoTabela = 0;
                     let matchType = 'NULL';
                     let eanExcel = '';
@@ -427,7 +444,8 @@ const handler = async (req, res) => {
                         precoMinimo,
                         status,
                         matchType,
-                        observacoes
+                        observacoes,
+                        arquivoOrigem: item.arquivoOrigem
                     });
                 }
 

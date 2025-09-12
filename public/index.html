@@ -15,23 +15,29 @@
 
         <section class="upload-section">
             <div class="upload-group">
-                <label class="upload-label">
-                    <input type="file" id="xmlFile" accept=".xml" hidden>
-                    <div class="upload-area">
-                        <div class="upload-icon">📄</div>
-                        <span>Upload XML (.xml)</span>
-                        <div class="file-name" id="xmlFileName"></div>
-                    </div>
-                </label>
+                <div class="upload-container">
+                    <label class="upload-label">
+                        <input type="file" id="xmlFile" accept=".xml" multiple hidden>
+                        <div class="upload-area">
+                            <div class="upload-icon">📄</div>
+                            <span>Upload XMLs (.xml) - Múltiplos Arquivos</span>
+                            <div class="file-name" id="xmlFileName"></div>
+                        </div>
+                    </label>
+                    <button id="clearXmlBtn" class="btn-clear" title="Limpar arquivos XML">🗑️</button>
+                </div>
 
-                <label class="upload-label">
-                    <input type="file" id="xlsxFile" accept=".xlsx,.xls" hidden>
-                    <div class="upload-area">
-                        <div class="upload-icon">📊</div>
-                        <span>Upload Excel (.xlsx)</span>
-                        <div class="file-name" id="xlsxFileName"></div>
-                    </div>
-                </label>
+                <div class="upload-container">
+                    <label class="upload-label">
+                        <input type="file" id="xlsxFile" accept=".xlsx,.xls" hidden>
+                        <div class="upload-area">
+                            <div class="upload-icon">📊</div>
+                            <span>Upload Excel (.xlsx)</span>
+                            <div class="file-name" id="xlsxFileName"></div>
+                        </div>
+                    </label>
+                    <button id="clearXlsxBtn" class="btn-clear" title="Limpar arquivo Excel">🗑️</button>
+                </div>
             </div>
 
             <div class="margin-config">

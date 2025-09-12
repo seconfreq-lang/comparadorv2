@@ -11,6 +11,7 @@ class NFEComparator {
         this.initializeEventListeners();
         this.updateButtonStates();
         this.updateMarginDisplay();
+        this.updateClearButtonStates();
     }
 
     initializeEventListeners() {
@@ -67,17 +68,40 @@ class NFEComparator {
                 this.recalculateWithNewMargin();
             }
         });
+
+        // Clear buttons
+        document.getElementById('clearXmlBtn').addEventListener('click', () => {
+            this.clearFiles('xml');
+        });
+
+        document.getElementById('clearXlsxBtn').addEventListener('click', () => {
+            this.clearFiles('xlsx');
+        });
     }
 
     handleFileUpload(event, type) {
-        console.log(`File upload event for ${type}:`, event.target.files[0]);
+        console.log(`File upload event for ${type}:`, event.target.files);
         
-        const file = event.target.files[0];
-        if (!file) return;
+        const files = event.target.files;
+        if (!files || files.length === 0) return;
 
         const fileNameElement = document.getElementById(`${type}FileName`);
-        if (fileNameElement) {
-            fileNameElement.textContent = file.name;
+        
+        if (type === 'xml') {
+            // Para XMLs, mostrar quantos arquivos foram selecionados
+            if (fileNameElement) {
+                if (files.length === 1) {
+                    fileNameElement.textContent = files[0].name;
+                } else {
+                    fileNameElement.textContent = `${files.length} arquivos XML selecionados`;
+                }
+            }
+        } else {
+            // Para Excel, apenas um arquivo
+            const file = files[0];
+            if (fileNameElement) {
+                fileNameElement.textContent = file.name;
+            }
         }
 
         // Buscar o upload-area corretamente
@@ -92,19 +116,20 @@ class NFEComparator {
 
         console.log(`Calling updateButtonStates after ${type} upload`);
         this.updateButtonStates();
+        this.updateClearButtonStates();
     }
 
     updateButtonStates() {
         console.log("updateButtonStates called");
-        const xmlFile = document.getElementById('xmlFile').files[0];
+        const xmlFiles = document.getElementById('xmlFile').files;
         const xlsxFile = document.getElementById('xlsxFile').files[0];
         const compareBtn = document.getElementById('compareBtn');
 
-        console.log("XML file:", xmlFile, "XLSX file:", xlsxFile);
-        console.log("Button will be disabled:", !xmlFile || !xlsxFile);
+        console.log("XML files:", xmlFiles, "XLSX file:", xlsxFile);
+        console.log("Button will be disabled:", !xmlFiles.length || !xlsxFile);
         
         if (compareBtn) {
-            compareBtn.disabled = !xmlFile || !xlsxFile;
+            compareBtn.disabled = !xmlFiles.length || !xlsxFile;
         }
         
         // Atualizar outros botões se necessário
@@ -115,11 +140,11 @@ class NFEComparator {
     }
 
     async compareFiles() {
-        const xmlFile = document.getElementById('xmlFile').files[0];
+        const xmlFiles = document.getElementById('xmlFile').files;
         const xlsxFile = document.getElementById('xlsxFile').files[0];
 
-        if (!xmlFile || !xlsxFile) {
-            this.showError('Por favor, selecione ambos os arquivos (XML e Excel)');
+        if (!xmlFiles.length || !xlsxFile) {
+            this.showError('Por favor, selecione pelo menos um arquivo XML e um arquivo Excel');
             return;
         }
 
@@ -128,7 +153,12 @@ class NFEComparator {
 
         try {
             const formData = new FormData();
-            formData.append('xml', xmlFile);
+            
+            // Adicionar todos os arquivos XML
+            for (let i = 0; i < xmlFiles.length; i++) {
+                formData.append('xml', xmlFiles[i]);
+            }
+            
             formData.append('xlsx', xlsxFile);
             formData.append('marginPercent', this.marginPercent.toString());
 
@@ -492,6 +522,47 @@ Detalhes de Cálculo - ${item.descricao}
         const multiplier = (1 + this.marginPercent / 100).toFixed(1);
         if (marginDisplay) {
             marginDisplay.textContent = multiplier;
+        }
+    }
+
+    clearFiles(type) {
+        const fileInput = document.getElementById(`${type}File`);
+        const fileNameElement = document.getElementById(`${type}FileName`);
+        const uploadArea = fileInput.closest('.upload-label').querySelector('.upload-area');
+        
+        // Limpar o input de arquivo
+        fileInput.value = '';
+        
+        // Limpar o nome do arquivo exibido
+        if (fileNameElement) {
+            fileNameElement.textContent = '';
+        }
+        
+        // Remover a classe has-file
+        if (uploadArea) {
+            uploadArea.classList.remove('has-file');
+        }
+        
+        // Atualizar estado dos botões
+        this.updateButtonStates();
+        this.updateClearButtonStates();
+        
+        console.log(`Arquivos ${type.toUpperCase()} limpos`);
+    }
+
+    updateClearButtonStates() {
+        const xmlFiles = document.getElementById('xmlFile').files;
+        const xlsxFile = document.getElementById('xlsxFile').files[0];
+        
+        const clearXmlBtn = document.getElementById('clearXmlBtn');
+        const clearXlsxBtn = document.getElementById('clearXlsxBtn');
+        
+        if (clearXmlBtn) {
+            clearXmlBtn.disabled = !xmlFiles.length;
+        }
+        
+        if (clearXlsxBtn) {
+            clearXlsxBtn.disabled = !xlsxFile;
         }
     }
     
