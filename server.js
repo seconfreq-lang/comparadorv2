@@ -113,6 +113,28 @@ const detectMultiplierInUnit = (unit) => {
     return { multiplier: 1, cleanUnit: unit };
 };
 
+// Extrair peso unitário do xProd (ex: "PRESUNTO FATIADO RESFRIADO 180G VC SADIA" -> 180)
+const extrairPesoUnitario = (xProd) => {
+    if (!xProd) return null;
+    
+    // Buscar padrões como 180G, 500G, 1.5KG, etc.
+    const pesoMatch = xProd.match(/(\d+(?:[.,]\d+)?)\s*(G|KG)\b/i);
+    
+    if (pesoMatch) {
+        const valor = parseFloat(pesoMatch[1].replace(',', '.'));
+        const unidade = pesoMatch[2].toUpperCase();
+        
+        // Converter tudo para gramas
+        if (unidade === 'KG') {
+            return valor * 1000;
+        } else {
+            return valor; // já está em gramas
+        }
+    }
+    
+    return null;
+};
+
 // Calcular unidades internas
 const unidadesInternasDe = (item) => {
     const { uTrib, qTrib, uCom, qCom, xProd } = item;
@@ -121,9 +143,9 @@ const unidadesInternasDe = (item) => {
     const uTribInfo = detectMultiplierInUnit(uTrib);
     const uComInfo = detectMultiplierInUnit(uCom);
     
-    // Usar uTrib preferencialmente, senão uCom
+    // Sempre usar qTrib como quantidade final
     const unitInfo = uTribInfo.multiplier > 1 ? uTribInfo : uComInfo;
-    const quantity = uTribInfo.multiplier > 1 ? qTrib : qCom;
+    const quantity = qTrib; // Sempre usar qTrib
     const adjustedQuantity = quantity * unitInfo.multiplier;
     
     // Se a unidade limpa é unidade direta (latas, garrafas, peças)
@@ -428,11 +450,28 @@ const parseXMLData = (xmlBuffer) => {
         // Determinar desconto aplicado
         const descontoAplicado = item.vDesc > 0 ? item.vDesc : descontosPorItem[i];
         
+        // Aplicar regra especial para uTrib = "KG" PRIMEIRO
+        let qtribFinal = item.qTrib;
+        let observacaoKG = '';
+        
+        if (item.uTrib && item.uTrib.toUpperCase() === 'KG') {
+            const pesoUnitario = extrairPesoUnitario(item.xProd);
+            if (pesoUnitario && pesoUnitario > 0) {
+                // Converter qTrib de KG para gramas e dividir pelo peso unitário
+                const qTribGramas = item.qTrib * 1000;
+                qtribFinal = qTribGramas / pesoUnitario;
+                observacaoKG = `Regra KG aplicada: ${item.qTrib}KG ÷ ${pesoUnitario}G = ${qtribFinal.toFixed(2)} unidades`;
+            }
+        }
+        
+        // Criar item atualizado com qtribFinal para passar para as funções
+        const itemAtualizado = { ...item, qTrib: qtribFinal };
+        
         // Calcular total do item (preço pago)
         const totalItem = (item.vProd - descontoAplicado) + item.vIPI + item.vICMSST + item.vOutro;
         
-        // Calcular unidades internas
-        const unidadesInfo = unidadesInternasDe(item);
+        // Calcular unidades internas usando o qtribFinal
+        const unidadesInfo = unidadesInternasDe(itemAtualizado);
         
         // Calcular unitário real
         const unitarioReal = unidadesInfo.unidades > 0 ? totalItem / unidadesInfo.unidades : 0;
@@ -446,17 +485,17 @@ const parseXMLData = (xmlBuffer) => {
         const activeMultiplier = uTribInfo.multiplier > 1 ? uTribInfo.multiplier : uComInfo.multiplier;
         const quantidadeAjustada = activeMultiplier > 1 ? item.qCom * activeMultiplier : item.qCom;
         
-        // Preço unitário antigo (para compatibilidade)
+        // Preço unitário sempre baseado em qtribFinal (quantidade tributável final)
         const vProdLiquido = item.vProd - descontoAplicado;
-        const precoXML_unit = quantidadeAjustada > 0 ? vProdLiquido / quantidadeAjustada : 0;
+        const precoXML_unit = qtribFinal > 0 ? vProdLiquido / qtribFinal : 0;
 
         items.push({
             codigo: item.codigo,
             descricao: item.descricao,
             uCom: item.uCom,
-            qCom: quantidadeAjustada,
+            qCom: qtribFinal,
             uTrib: item.uTrib,
-            qTrib: item.qTrib,
+            qTrib: qtribFinal,
             vProd: item.vProd,
             vDesc: item.vDesc,
             vProdLiquido,
@@ -690,7 +729,7 @@ app.post('/api/comparar', upload.fields([
             results.push({
                 codigo: item.codigo,
                 descricao: item.descricao,
-                quantidadeXml: quantidadeAjustada,
+                quantidadeXml: item.qTrib,
                 unidade: item.uCom || item.uTrib,
                 ean: item.ean || '',
                 eanTrib: item.eanTrib || '',

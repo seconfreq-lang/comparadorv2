@@ -48,6 +48,28 @@ const detectMultiplier = (description) => {
     return 1;
 };
 
+// Extrair peso unitário do xProd (ex: "PRESUNTO FATIADO RESFRIADO 180G VC SADIA" -> 180)
+const extrairPesoUnitario = (xProd) => {
+    if (!xProd) return null;
+    
+    // Buscar padrões como 180G, 500G, 1.5KG, etc.
+    const pesoMatch = xProd.match(/(\d+(?:[.,]\d+)?)\s*(G|KG)\b/i);
+    
+    if (pesoMatch) {
+        const valor = parseFloat(pesoMatch[1].replace(',', '.'));
+        const unidade = pesoMatch[2].toUpperCase();
+        
+        // Converter tudo para gramas
+        if (unidade === 'KG') {
+            return valor * 1000;
+        } else {
+            return valor; // já está em gramas
+        }
+    }
+    
+    return null;
+};
+
 // Função para normalizar nomes para fuzzy matching
 const normalizeName = (name) => {
     if (!name) return '';
@@ -147,12 +169,26 @@ const parseXMLData = (xmlBuffer) => {
         const ean = normEAN(prod.cEAN);
         const eanTrib = normEAN(prod.cEANTrib);
 
+        // Aplicar regra especial para uTrib = "KG"
+        let qtribFinal = qTrib;
+        let observacaoKG = '';
+        
+        if (uTrib && uTrib.toUpperCase() === 'KG') {
+            const pesoUnitario = extrairPesoUnitario(descricao);
+            if (pesoUnitario && pesoUnitario > 0) {
+                // Converter qTrib de KG para gramas e dividir pelo peso unitário
+                const qTribGramas = qTrib * 1000;
+                qtribFinal = qTribGramas / pesoUnitario;
+                observacaoKG = `Regra KG aplicada: ${qTrib}KG ÷ ${pesoUnitario}G = ${qtribFinal.toFixed(2)} unidades`;
+            }
+        }
+        
         // Calcular preço unitário: (Valor Produto - Desconto) / Quantidade
         const vProdLiquido = vProd - vDesc; // Valor do produto após desconto
         let precoXML_unit = 0;
         
-        if (qCom > 0) {
-            precoXML_unit = vProdLiquido / qCom;
+        if (qtribFinal > 0) {
+            precoXML_unit = vProdLiquido / qtribFinal;
         } else {
             precoXML_unit = 0; // Se não há quantidade, preço unitário é 0
         }
@@ -163,7 +199,7 @@ const parseXMLData = (xmlBuffer) => {
             uCom,
             qCom,
             uTrib,
-            qTrib,
+            qTrib: qtribFinal,
             vProd,
             vDesc,
             vProdLiquido,
@@ -378,7 +414,7 @@ const handler = async (req, res) => {
                     results.push({
                         codigo: item.codigo,
                         descricao: item.descricao,
-                        quantidadeXml: item.qCom,
+                        quantidadeXml: item.qTrib,
                         unidade: item.uCom || item.uTrib,
                         ean: item.ean || '',
                         eanTrib: item.eanTrib || '',
