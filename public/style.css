@@ -516,16 +516,16 @@ tr:hover {
     font-family: 'Courier New', monospace;
 }
 
-/* New column styling */
-th:nth-child(n+8):nth-child(-n+16) {
+/* New column styling - Colunas azuis claras (Preço Bruto até R$/L ou R$/KG) */
+th:nth-child(n+11):nth-child(-n+19) {
     background-color: #e8f4fd !important;
     color: #0c5aa6;
 }
 
 /* Highlight key calculation columns */
-th:nth-child(13), /* Total Item */
-th:nth-child(15), /* Unitário Real */
-th:nth-child(16)  /* R$/L ou R$/KG */ {
+th:nth-child(16), /* Total Item */
+th:nth-child(18), /* Unitário Real */
+th:nth-child(19)  /* R$/L ou R$/KG */ {
     background-color: #d4edda !important;
     color: #155724;
     font-weight: bold;

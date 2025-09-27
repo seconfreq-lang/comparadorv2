@@ -267,6 +267,9 @@ class NFEComparator {
                 <td>${item.descricao}</td>
                 <td class="text-right">${this.formatNumber(item.quantidadeXml)}</td>
                 <td class="text-center">${item.unidade}</td>
+                <td class="currency">${this.formatCurrency(item.precoTabela)}</td>
+                <td class="currency">${this.formatCurrency(item.precoMinimo)}</td>
+                <td><span class="badge status-${item.status}">${this.formatStatus(item.status)}</span></td>
                 <td class="currency">${this.formatCurrency(item.precoBruto || item.vProd || 0)}</td>
                 <td class="currency">${this.formatCurrency(item.descontoAplicado || item.vDesc || 0)}</td>
                 <td class="currency">${this.formatCurrency(item.ipi || 0)}</td>
@@ -276,9 +279,6 @@ class NFEComparator {
                 <td class="text-right" title="${item.notasCalculo?.observacaoUnidade || ''}">${unidadesText}</td>
                 <td class="currency">${this.formatCurrency(item.unitarioReal || item.precoXML_unit || 0)}</td>
                 <td class="text-right">${porLitroOuKgText}</td>
-                <td class="currency">${this.formatCurrency(item.precoTabela)}</td>
-                <td class="currency">${this.formatCurrency(item.precoMinimo)}</td>
-                <td><span class="badge status-${item.status}">${this.formatStatus(item.status)}</span></td>
                 <td class="text-center">${item.matchType}</td>
                 <td>${item.observacoes}</td>
             `;
